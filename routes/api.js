@@ -28,9 +28,10 @@ module.exports = function(app) {
             text: text,
             replycount: 0,
             created_on: date,
-            boardName: board,
             bumped_on: date,
-            password: delete_password
+            boardName: board,            
+            password: delete_password,
+            reported:false
           })
           let savedThread = await newThread.save();
           return res.redirect(`/b/${board}/`);
@@ -47,17 +48,18 @@ module.exports = function(app) {
             _id: thread_id,
             board_ID: newBoard_id,
             text: req.body.text,
-            created_on: date,
-            bumped_on: date,
+            created_on: date, 
+            bumped_on: date,           
             boardName: board,
             replycount: 0,
-            password: delete_password
+            password: delete_password,
+            reported:false
 
           })
           let savedBoard = await newBoard.save()
           let savedThread = await newThread.save()
           res.type('application/json')
-          return res.redirect(`/b/${board}/`)
+          return res.redirect(`/b/${board}`)
         }
       }
       catch (err) {
@@ -74,8 +76,11 @@ module.exports = function(app) {
 
         console.log("api/threads/:board  .get was called")
         const name = req.params.board
+        console.log("BoardName : -------")
+        console.log(name)
         const data = await ThreadModel.aggregate([
           {
+            
             $lookup: {
 
               localField: "board_ID",
@@ -93,6 +98,7 @@ module.exports = function(app) {
             $match: { boardName: name }
           }
           ,
+          
           {
             $project: {
               text: 1,
@@ -110,11 +116,13 @@ module.exports = function(app) {
               reported: 0,
               replies: { password: 0, reported: 0 },
             }
-          }
-        ]).sort({ bumped_on: -1 });
+          },
+          {$sort:{ bumped_on: -1 }},
+          {$limit:10}
+        ]);
         
 
-      
+        console.log(data)
         //res.type('application/json')
         res.json(data)
       }
@@ -128,8 +136,9 @@ module.exports = function(app) {
     .put(async (req, res) => {
 
       try {
-        const { report_id } = req.body
-        let date = new Date()
+       //console.log (req.body)
+        const  report_id  = req.body.thread_id
+       
 
         let thread = await ThreadModel.findByIdAndUpdate(report_id, {
           $set: {
@@ -168,13 +177,42 @@ module.exports = function(app) {
 
 
 
-  app.route('/api/replies/:board')
+
+
+
+
+
+
+
+
+
+
+
+//----------------------------------------------------------------------------------------//
+
+
+
+
+
+
+
+
+
+
+
+
+  app.route('/api/replies/:board/')
     .post(async (req, res) => {
       try {
         console.log('/api/replies/:board POST req: ')
+        console.log(req.body)
+        console.log('boardName: ')
+        
         const boardName = req.params.board
+        console.log(boardName)
         const date = new Date(Date.now());
-        const { text, delete_password, thread_id } = req.body
+        const { text, delete_password,thread_id } = req.body;
+        
         let rep_id = new mongoose.Types.ObjectId();
 
         let newReply = {
@@ -185,15 +223,17 @@ module.exports = function(app) {
           reported: false
 
         }
+        
 
-        await ThreadModel.findByIdAndUpdate(thread_id, {
+       let update= await ThreadModel.findByIdAndUpdate(thread_id, {
           $inc: { replycount: 1 },
           bumped_on: date,
           $push: { replies: newReply },
 
-        }, { new: true }
+        }
+        , { new: true }
         )
-
+        console.log(update)
         res.redirect(`/b/${boardName}/${thread_id}`)
 
       }
@@ -205,12 +245,17 @@ module.exports = function(app) {
     })
     .get(async (req, res) => {
       try {
-       // console.log(req.query)
-        const { thread_id } = req.query;
+      console.log(req.body)
+      
+      let thread_id = req.body.thread_id
+      console.log(req.query)
+      if(typeof thread_id !== "string" ){
+          thread_id=req.query.thread_id
+        }
         const data = await ThreadModel.findById(
           thread_id
           , {
-            text: 1, created_on: 1, replies: {
+            text: 1, created_on: 1,bumped_on: 1, replies: {
               _id: 1, text: 1, created_on: 1
             }
           })
@@ -229,15 +274,13 @@ module.exports = function(app) {
         //console.log(req.body)
         const { thread_id, reply_id } = req.body
         const date = new Date()
-
-
         //let thread = await ThreadModel.findOneAndUpdate({ _id: thread_id, replies: { $elemMatch: { _id: reply_id } } },
         // { $set: { "replies.$.reported_on": date } }
         //)
         let thread = await ThreadModel.findOneAndUpdate({ _id: thread_id, replies: { $elemMatch: { _id: reply_id } } },
           { $set: { "replies.$.reported": true } }
         )
-
+        //console.log(thread)
         const data = "reported"
         return res.send(data)
 
@@ -270,7 +313,7 @@ module.exports = function(app) {
         if (reply.password === delete_password) {
           let thread = await ThreadModel.findOneAndUpdate({ _id: thread_id, replies: { $elemMatch: { _id: reply_id } } },
             {
-              $inc: { replycount: -1 },
+              //$inc: { replycount: -1 },
               $set: { "replies.$.text": "[deleted]" }
             }
           )
@@ -287,5 +330,7 @@ module.exports = function(app) {
         res.status(500).send(err);
       }
     })
-};        
+};       
+
+
 //test
